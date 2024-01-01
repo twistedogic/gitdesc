@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 	"time"
@@ -43,7 +42,7 @@ type mockCommit struct {
 	files  []mockFile
 }
 
-func (m mockCommit) commit(repo *git.Repository, message string) error {
+func (m mockCommit) commit(repo *git.Repository, message string, date time.Time) error {
 	tree, err := repo.Worktree()
 	if err != nil {
 		return err
@@ -57,7 +56,7 @@ func (m mockCommit) commit(repo *git.Repository, message string) error {
 		All: true,
 		Author: &object.Signature{
 			Name: m.author,
-			When: time.Now(),
+			When: date,
 		},
 	}); err != nil {
 		return err
@@ -65,20 +64,23 @@ func (m mockCommit) commit(repo *git.Repository, message string) error {
 	return nil
 }
 
-func setupRepo(t *testing.T, commits []mockCommit) *git.Repository {
+func setupRepo(t *testing.T, start time.Time, commits []mockCommit) *git.Repository {
 	t.Helper()
 	repo, err := git.Init(memory.NewStorage(), memfs.New())
 	require.NoError(t, err)
 	for i, c := range commits {
-		require.NoError(t, c.commit(repo, fmt.Sprintf("commit %d", i)))
+		commitTime := start.AddDate(0, 0, i)
+		require.NoError(t, c.commit(repo, fmt.Sprintf("commit %d", i), commitTime))
 	}
 	return repo
 }
 
 func Test_Repo(t *testing.T) {
 	cases := map[string]struct {
-		commits                        []mockCommit
-		wantAuthorStats, wantFileStats string
+		start        time.Time
+		commits      []mockCommit
+		valid, limit *object.CommitFilter
+		want         []Stats
 	}{
 		"base": {
 			commits: []mockCommit{
@@ -109,28 +111,97 @@ func Test_Repo(t *testing.T) {
 					},
 				},
 			},
-			wantAuthorStats: `name|commit|addition|deletion|
-a   |3     |5       |2       |
-b   |1     |0       |1       |
-`,
-			wantFileStats: `name        |commit|addition|deletion|
-test        |3     |3       |2       |
-dir/test    |2     |1       |1       |
-dir/dir/test|1     |1       |0       |
-`,
+			want: []Stats{
+				{Name: "a", Type: authorType, Commit: 3, Addition: 5, Deletion: 2},
+				{Name: "b", Type: authorType, Commit: 1, Addition: 0, Deletion: 1},
+				{Name: "test", Type: fileType, Commit: 3, Addition: 3, Deletion: 2},
+				{Name: "dir/test", Type: fileType, Commit: 2, Addition: 1, Deletion: 1},
+				{Name: "dir/dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
+			},
+		},
+		"a only": {
+			commits: []mockCommit{
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "something"},
+						{path: "dir/test", content: "something"},
+						{path: "dir/dir/test", content: "something"},
+					},
+				},
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "otherthing"},
+					},
+				},
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "other"},
+					},
+				},
+				{
+					author: "b",
+					files: []mockFile{
+						{path: "dir/test", content: ""},
+					},
+				},
+			},
+			valid: compose(MatchAuthorRegex("a")),
+			want: []Stats{
+				{Name: "a", Type: authorType, Commit: 3, Addition: 5, Deletion: 2},
+				{Name: "test", Type: fileType, Commit: 3, Addition: 3, Deletion: 2},
+				{Name: "dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
+				{Name: "dir/dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
+			},
+		},
+		"limit 2 last commits only": {
+			commits: []mockCommit{
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "something"},
+						{path: "dir/test", content: "something"},
+						{path: "dir/dir/test", content: "something"},
+					},
+				},
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "otherthing"},
+					},
+				},
+				{
+					author: "a",
+					files: []mockFile{
+						{path: "test", content: "other"},
+					},
+				},
+				{
+					author: "b",
+					files: []mockFile{
+						{path: "dir/test", content: ""},
+					},
+				},
+			},
+			limit: compose(LimitN(2)),
+			want: []Stats{
+				{Name: "a", Type: authorType, Commit: 2, Addition: 2, Deletion: 2},
+				{Name: "b", Type: authorType, Commit: 1, Addition: 0, Deletion: 1},
+				{Name: "test", Type: fileType, Commit: 2, Addition: 2, Deletion: 2},
+				{Name: "dir/test", Type: fileType, Commit: 1, Addition: 0, Deletion: 1},
+			},
 		},
 	}
 	for name := range cases {
 		tc := cases[name]
 		t.Run(name, func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			repo := setupRepo(t, tc.commits)
-			r := New(buf, repo)
-			require.NoError(t, r.AuthorStats())
-			require.Equal(t, tc.wantAuthorStats, buf.String(), "author")
-			buf.Reset()
-			require.NoError(t, r.FileStats())
-			require.Equal(t, tc.wantFileStats, buf.String(), "files")
+			repo := setupRepo(t, tc.start, tc.commits)
+			r := New(repo)
+			report, err := r.Report(tc.valid, tc.limit)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, report.list(), "stats")
 		})
 	}
 }
