@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"text/tabwriter"
 
@@ -96,8 +97,15 @@ func NewFromDir() (Repo, error) {
 	if err != nil {
 		return Repo{}, err
 	}
-	repo, err := git.PlainOpen(dir)
-	return New(os.Stdout, repo), err
+	repo := &git.Repository{}
+	for dir != "/" {
+		repo, err = git.PlainOpen(dir)
+		if err == nil {
+			return New(os.Stdout, repo), nil
+		}
+		dir = filepath.Dir(dir)
+	}
+	return Repo{}, err
 }
 
 func (r Repo) commitStats(ch chan CommitStats, filters ...CommitFilter) error {
