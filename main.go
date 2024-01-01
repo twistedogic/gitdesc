@@ -1,95 +1,20 @@
 package main
 
 import (
-	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
-	"text/tabwriter"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-type Stats struct {
-	Key                        string
-	Commit, Addition, Deletion int
-}
-
-func (s Stats) String() string {
-	return fmt.Sprintf("%s\t%d\t%d\t%d\t", s.Key, s.Commit, s.Addition, s.Deletion)
-}
-
-func (s *Stats) Add(add, del int) {
-	s.Commit += 1
-	s.Addition += add
-	s.Deletion += del
-}
-
-type Report map[string]*Stats
-
-func (r Report) WriteTo(w io.Writer) error {
-	if _, err := fmt.Fprintln(w, "name\tcommit\taddition\tdeletion\t"); err != nil {
-		return err
-	}
-	entries := make([]*Stats, 0, len(r))
-	for _, entry := range r {
-		entries = append(entries, entry)
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Commit == entries[j].Commit {
-			return entries[i].Addition > entries[j].Addition
-		}
-		return entries[i].Commit > entries[j].Commit
-	})
-	for _, entry := range entries {
-		if _, err := fmt.Fprintln(w, entry.String()); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type CommitStats struct {
-	Author, Hash string
-	Files        object.FileStats
-}
-
-func ToCommitStats(commit *object.Commit) (CommitStats, error) {
-	stats := CommitStats{}
-	stats.Author = commit.Committer.Name
-	if name := commit.Author.Name; name != "" {
-		stats.Author = name
-	}
-	stats.Hash = commit.Hash.String()
-	files, err := commit.Stats()
-	if err != nil {
-		return stats, err
-	}
-	stats.Files = files
-	return stats, nil
-}
-
-func (c CommitStats) Diff() (add, del int) {
-	for _, f := range c.Files {
-		add += f.Addition
-		del += f.Deletion
-	}
-	return
-}
-
-type CommitFilter func(*object.Commit) bool
-
 type Repo struct {
 	repo *git.Repository
-	w    *tabwriter.Writer
 }
 
-func New(w io.Writer, repo *git.Repository) Repo {
-	writer := tabwriter.NewWriter(w, 0, 0, 0, ' ', tabwriter.Debug)
-	return Repo{repo: repo, w: writer}
+func New(repo *git.Repository) Repo {
+	return Repo{repo: repo}
 }
 
 func NewFromDir() (Repo, error) {
@@ -101,68 +26,54 @@ func NewFromDir() (Repo, error) {
 	for dir != "/" {
 		repo, err = git.PlainOpen(dir)
 		if err == nil {
-			return New(os.Stdout, repo), nil
+			return New(repo), nil
 		}
 		dir = filepath.Dir(dir)
 	}
 	return Repo{}, err
 }
 
-func (r Repo) commitStats(ch chan CommitStats, filters ...CommitFilter) error {
-	defer close(ch)
-	iter, err := r.repo.CommitObjects()
+func (r Repo) commitStats(isValid, isLimit *object.CommitFilter) (<-chan Stats, error) {
+	ref, err := r.repo.Head()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return iter.ForEach(func(c *object.Commit) error {
-		for _, f := range filters {
-			if !f(c) {
-				return nil
+	head, err := r.repo.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+	ch := make(chan Stats)
+	iter := object.NewFilterCommitIter(head, isValid, isLimit)
+	go func() {
+		defer iter.Close()
+		defer close(ch)
+		if err := iter.ForEach(func(c *object.Commit) error {
+			stats, err := ToStats(c)
+			if err != nil {
+				return err
 			}
-		}
-		stats, err := ToCommitStats(c)
-		if err != nil {
+			for _, s := range stats {
+				ch <- s
+			}
 			return err
+		}); err != nil {
+			log.Fatal(err)
 		}
-		ch <- stats
-		return err
-	})
+	}()
+	return ch, nil
+
 }
 
-func (r Repo) AuthorStats(filters ...CommitFilter) error {
-	ch := make(chan CommitStats)
-	go r.commitStats(ch, filters...)
-	s := make(Report)
-	for stats := range ch {
-		key := stats.Author
-		if _, ok := s[key]; !ok {
-			s[key] = &Stats{Key: key}
-		}
-		s[key].Add(stats.Diff())
+func (r Repo) Report(isValid, isLimit *object.CommitFilter) (Report, error) {
+	statsCh, err := r.commitStats(isValid, isLimit)
+	if err != nil {
+		return nil, err
 	}
-	if err := s.WriteTo(r.w); err != nil {
-		return err
+	report := make(Report)
+	for stats := range statsCh {
+		report.add(stats)
 	}
-	return r.w.Flush()
-}
-
-func (r Repo) FileStats(filters ...CommitFilter) error {
-	ch := make(chan CommitStats)
-	go r.commitStats(ch, filters...)
-	s := make(Report)
-	for stats := range ch {
-		for _, f := range stats.Files {
-			key := f.Name
-			if _, ok := s[key]; !ok {
-				s[key] = &Stats{Key: key}
-			}
-			s[key].Add(f.Addition, f.Deletion)
-		}
-	}
-	if err := s.WriteTo(r.w); err != nil {
-		return err
-	}
-	return r.w.Flush()
+	return report, nil
 }
 
 func main() {
@@ -170,12 +81,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("# Author statistics")
-	if err := repo.AuthorStats(); err != nil {
+	report, err := repo.Report(nil, nil)
+	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("\n# Files statistics")
-	if err := repo.FileStats(); err != nil {
+	if err := report.Print(os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 }
