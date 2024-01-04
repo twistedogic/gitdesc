@@ -61,6 +61,8 @@ func (s Stats) Add(o Stats) Stats {
 	}
 }
 
+type StatsFilter func(Stats) bool
+
 type Report map[string]Stats
 
 func (r Report) add(s Stats) {
@@ -71,10 +73,12 @@ func (r Report) add(s Stats) {
 	r[s.Key()] = r[s.Key()].Add(s)
 }
 
-func (r Report) list() []Stats {
+func (r Report) list(filter StatsFilter) []Stats {
 	entries := make([]Stats, 0, len(r))
 	for _, entry := range r {
-		entries = append(entries, entry)
+		if filter(entry) {
+			entries = append(entries, entry)
+		}
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].MoreThan(entries[j])
@@ -90,12 +94,23 @@ func (r Report) writeHeader(w io.Writer) error {
 	return err
 }
 
-func (r Report) Print(w io.Writer) error {
+func (r Report) combineFilters(filters []StatsFilter) StatsFilter {
+	return func(s Stats) bool {
+		for _, f := range filters {
+			if !f(s) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func (r Report) Print(w io.Writer, filters ...StatsFilter) error {
 	writer := tabwriter.NewWriter(w, 0, 0, 0, ' ', tabwriter.Debug)
 	if err := r.writeHeader(writer); err != nil {
 		return err
 	}
-	for _, entry := range r.list() {
+	for _, entry := range r.list(r.combineFilters(filters)) {
 		if err := entry.WriteTo(writer); err != nil {
 			return err
 		}
