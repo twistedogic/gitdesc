@@ -30,7 +30,7 @@ func (s Stats) rank() string {
 
 func (s Stats) String() string {
 	return fmt.Sprintf(
-		"%s\t%s\t%d\t%d\t%d\t",
+		"%s\t%s\t%d\t+%d\t-%d\t",
 		s.Name, s.Type,
 		s.Commit, s.Addition, s.Deletion,
 	)

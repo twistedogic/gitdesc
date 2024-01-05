@@ -47,7 +47,7 @@ type gitdescCmd struct {
 	f             *flag.FlagSet
 	before, after *DateValue
 	report        reportType
-	last          int
+	last, top     int
 	help          bool
 	messageRegex  string
 }
@@ -58,6 +58,7 @@ func NewCmd(f *flag.FlagSet) *gitdescCmd {
 	f.Var(g.before, "before", "commit before provided date")
 	f.Var(g.after, "after", "commit after provided date")
 	f.IntVar(&g.last, "last", 0, "last N commits")
+	f.IntVar(&g.top, "top", 0, "top N entries")
 	f.StringVar(&g.messageRegex, "re", "", "regex for commit message match")
 	f.Var(&g.report, "filter", "filter on type")
 	return g
