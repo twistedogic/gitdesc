@@ -68,7 +68,12 @@ func (r Report) add(s *Stats) {
 }
 
 func (r Report) Print(w io.Writer, s sortFunc) {
-	for t, content := range r {
-		printTable(w, t, content, s)
+	keys := make([]string, 0, len(r))
+	for t := range r {
+		keys = append(keys, t)
+	}
+	slices.Sort(keys)
+	for _, t := range keys {
+		printTable(w, t, r[t], s)
 	}
 }
