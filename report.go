@@ -1,11 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"cmp"
 	"io"
-	"sort"
+	"slices"
 	"strconv"
-	"text/tabwriter"
+	"strings"
+
+	"github.com/olekukonko/tablewriter"
 )
 
 type Stats struct {
@@ -13,107 +15,60 @@ type Stats struct {
 	Commit, Addition, Deletion int
 }
 
-func (s Stats) Key() string {
-	return s.Type + "-" + s.Name
-}
-
-func (s Stats) rank() string {
-	r := "0"
-	switch s.Type {
-	case emailType:
-		r = "1"
-	case authorType:
-		r = "2"
-	}
-	return r + strconv.Itoa(s.Commit) + strconv.Itoa(s.Addition) + strconv.Itoa(s.Deletion)
-}
-
-func (s Stats) String() string {
-	return fmt.Sprintf(
-		"%s\t%s\t%d\t+%d\t-%d\t",
-		s.Name, s.Type,
-		s.Commit, s.Addition, s.Deletion,
-	)
-}
-
-func (s Stats) WriteTo(w io.Writer) error {
-	_, err := fmt.Fprintln(w, s.String())
-	return err
-}
-
-func (s Stats) MoreThan(o Stats) bool {
-	if s.rank() == o.rank() {
-		return s.Name > o.Name
-	}
-	return s.rank() > o.rank()
-}
-
-func (s Stats) Add(o Stats) Stats {
-	if s.Key() != o.Key() {
-		return s
-	}
-	return Stats{
-		Name:     s.Name,
-		Type:     s.Type,
-		Commit:   s.Commit + o.Commit,
-		Addition: s.Addition + o.Addition,
-		Deletion: s.Deletion + o.Deletion,
-	}
-}
-
-type StatsFilter func(Stats) bool
-
-type Report map[string]Stats
-
-func (r Report) add(s Stats) {
-	if _, ok := r[s.Key()]; !ok {
-		r[s.Key()] = s
+func (s *Stats) add(o *Stats) {
+	if s.Type != o.Type || s.Name != o.Name {
 		return
 	}
-	r[s.Key()] = r[s.Key()].Add(s)
+	s.Addition += o.Addition
+	s.Deletion += o.Deletion
+	s.Commit += o.Commit
 }
 
-func (r Report) list(filter StatsFilter) []Stats {
-	entries := make([]Stats, 0, len(r))
-	for _, entry := range r {
-		if filter(entry) {
-			entries = append(entries, entry)
-		}
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].MoreThan(entries[j])
-	})
-	return entries
+func (s *Stats) append(w *tablewriter.Table) {
+	w.SetHeader([]string{"name", "commits", "additions", "deletions"})
+	w.Append([]string{s.Name, strconv.Itoa(s.Commit), strconv.Itoa(s.Addition), strconv.Itoa(s.Deletion)})
 }
 
-func (r Report) writeHeader(w io.Writer) error {
-	if _, err := fmt.Fprintln(w, "name\ttype\tcommit\taddition\tdeletion\t"); err != nil {
-		return err
+func (s *Stats) lineChanges() int { return s.Addition + s.Deletion }
+
+type sortFunc func(*Stats, *Stats) int
+
+func byNumberOfCommitsDesc(a, b *Stats) int { return -cmp.Compare(a.Commit, b.Commit) }
+func byLineChangeDesc(a, b *Stats) int      { return -cmp.Compare(a.lineChanges(), b.lineChanges()) }
+
+func printTable(w io.Writer, title string, content map[string]*Stats, f sortFunc) {
+	w.Write([]byte(strings.ToUpper(title) + "\n"))
+	t := tablewriter.NewWriter(w)
+	s := make([]*Stats, 0, len(content))
+	for _, stats := range content {
+		s = append(s, stats)
 	}
-	_, err := fmt.Fprintln(w, "---\t---\t---\t---\t---\t")
-	return err
+	slices.SortFunc(s, f)
+	for _, stats := range s {
+		stats.append(t)
+	}
+	t.Render()
 }
 
-func (r Report) combineFilters(filters []StatsFilter) StatsFilter {
-	return func(s Stats) bool {
-		for _, f := range filters {
-			if !f(s) {
-				return false
-			}
-		}
-		return true
+type Report map[string]map[string]*Stats
+
+func NewReport() Report {
+	return make(map[string]map[string]*Stats)
+}
+
+func (r Report) add(s *Stats) {
+	if _, ok := r[s.Type]; !ok {
+		r[s.Type] = make(map[string]*Stats)
+	}
+	if _, ok := r[s.Type][s.Name]; !ok {
+		r[s.Type][s.Name] = s
+	} else {
+		r[s.Type][s.Name].add(s)
 	}
 }
 
-func (r Report) Print(w io.Writer, filters ...StatsFilter) error {
-	writer := tabwriter.NewWriter(w, 0, 0, 0, ' ', tabwriter.Debug)
-	if err := r.writeHeader(writer); err != nil {
-		return err
+func (r Report) Print(w io.Writer, s sortFunc) {
+	for t, content := range r {
+		printTable(w, t, content, s)
 	}
-	for _, entry := range r.list(r.combineFilters(filters)) {
-		if err := entry.WriteTo(writer); err != nil {
-			return err
-		}
-	}
-	return writer.Flush()
 }

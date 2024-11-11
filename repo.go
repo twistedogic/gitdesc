@@ -33,7 +33,7 @@ func NewFromDir() (Repo, error) {
 	return Repo{}, err
 }
 
-func (r Repo) commitStats(isValid, isLimit *object.CommitFilter) (<-chan Stats, error) {
+func (r Repo) commitStats(isValid, isLimit *object.CommitFilter) (<-chan *Stats, error) {
 	ref, err := r.repo.Head()
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (r Repo) commitStats(isValid, isLimit *object.CommitFilter) (<-chan Stats, 
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan Stats)
+	ch := make(chan *Stats)
 	iter := object.NewFilterCommitIter(head, isValid, isLimit)
 	go func() {
 		defer iter.Close()
