@@ -1,6 +1,6 @@
 module github.com/twistedogic/gitdesc
 
-go 1.21.4
+go 1.22
 
 require (
 	github.com/go-git/go-billy/v5 v5.5.0
