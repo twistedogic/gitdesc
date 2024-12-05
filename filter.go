@@ -20,7 +20,7 @@ func (d *dateValue) String() string {
 }
 
 func (d *dateValue) Set(s string) error {
-	t, err := time.Parse(s, time.DateOnly)
+	t, err := time.Parse(time.DateOnly, s)
 	if err != nil {
 		return err
 	}
