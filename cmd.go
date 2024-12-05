@@ -39,5 +39,5 @@ func (g *gitdescCmd) Execute(args []string) {
 		log.Println(err)
 		os.Exit(1)
 	}
-	report.Print(os.Stdout, byLineChangeDesc)
+	report.Print(os.Stdout, byNumberOfCommitsDesc)
 }
