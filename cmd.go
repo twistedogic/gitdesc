@@ -6,35 +6,35 @@ import (
 	"os"
 )
 
-type gitdescCmd struct {
-	c    *commitFilterFlag
-	f    *flag.FlagSet
-	help bool
+type cmd struct {
+	filterFlag *commitFilter
+	flagSet    *flag.FlagSet
+	help       bool
 }
 
-func NewCmd(f *flag.FlagSet) *gitdescCmd {
-	c := NewCommitFilterFlag()
-	g := &gitdescCmd{c: c, f: f}
-	c.SetFlag(f)
-	f.BoolVar(&g.help, "help", false, "print help")
-	return g
+func NewCmd(f *flag.FlagSet) *cmd {
+	filterFlag := NewCommitFilter()
+	c := &cmd{filterFlag: filterFlag, flagSet: f}
+	filterFlag.SetFlag(f)
+	f.BoolVar(&c.help, "help", false, "print help")
+	return c
 }
 
-func (g *gitdescCmd) Execute(args []string) {
-	if err := g.f.Parse(args); err != nil {
+func (c *cmd) Execute(args []string) {
+	if err := c.flagSet.Parse(args); err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
-	if g.help {
-		g.f.Usage()
+	if c.help {
+		c.flagSet.Usage()
 		os.Exit(0)
 	}
-	repo, err := NewFromDir()
+	repo, err := NewRepoFromDir()
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
-	report, err := repo.Report(g.c.Valid(), g.c.Limit())
+	report, err := repo.Report(c.filterFlag.Valid(), c.filterFlag.Limit())
 	if err != nil {
 		log.Println(err)
 		os.Exit(1)

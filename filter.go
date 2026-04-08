@@ -28,17 +28,17 @@ func (d *dateValue) Set(s string) error {
 	return nil
 }
 
-type commitFilterFlag struct {
+type commitFilter struct {
 	author, email, file string
 	before, after       dateValue
 	lastN               int
 }
 
-func NewCommitFilterFlag() *commitFilterFlag {
-	return &commitFilterFlag{lastN: 100}
+func NewCommitFilter() *commitFilter {
+	return &commitFilter{lastN: 100}
 }
 
-func (c *commitFilterFlag) SetFlag(f *flag.FlagSet) {
+func (c *commitFilter) SetFlag(f *flag.FlagSet) {
 	f.StringVar(&c.author, "author", "", "commit author regex pattern")
 	f.StringVar(&c.email, "email", "", "commit email regex pattern")
 	f.StringVar(&c.file, "file", "", "commit file regex pattern")
@@ -47,8 +47,8 @@ func (c *commitFilterFlag) SetFlag(f *flag.FlagSet) {
 	f.IntVar(&c.lastN, "n", 100, "number of commits")
 }
 
-func (c *commitFilterFlag) Valid() *object.CommitFilter {
-	filters := []object.CommitFilter{func(c *object.Commit) bool { return true }}
+func (c *commitFilter) Valid() *object.CommitFilter {
+	filters := []object.CommitFilter{func(commit *object.Commit) bool { return true }}
 	if c.author != "" {
 		filters = append(filters, MatchAuthorRegex(c.author))
 	}
@@ -58,24 +58,24 @@ func (c *commitFilterFlag) Valid() *object.CommitFilter {
 	if c.file != "" {
 		filters = append(filters, MatchFileRegex(c.file))
 	}
-	return compose(filters...)
+	return andFilters(filters...)
 }
 
-func (c *commitFilterFlag) Limit() *object.CommitFilter {
+func (c *commitFilter) Limit() *object.CommitFilter {
 	filters := []object.CommitFilter{LimitN(c.lastN)}
 	if before := c.before.Date(); !before.IsZero() {
-		filters = append(filters, isBefore(before))
+		filters = append(filters, beforeDate(before))
 	}
 	if after := c.after.Date(); !after.IsZero() {
-		filters = append(filters, isAfter(after))
+		filters = append(filters, afterDate(after))
 	}
-	return compose(filters...)
+	return andFilters(filters...)
 }
 
-func compose(filters ...object.CommitFilter) *object.CommitFilter {
-	filter := object.CommitFilter(func(c *object.Commit) bool {
+func andFilters(filters ...object.CommitFilter) *object.CommitFilter {
+	filter := object.CommitFilter(func(commit *object.Commit) bool {
 		for _, f := range filters {
-			if !f(c) {
+			if !f(commit) {
 				return false
 			}
 		}
@@ -85,35 +85,35 @@ func compose(filters ...object.CommitFilter) *object.CommitFilter {
 }
 
 func not(f object.CommitFilter) object.CommitFilter {
-	return func(c *object.Commit) bool {
-		return !f(c)
+	return func(commit *object.Commit) bool {
+		return !f(commit)
 	}
 }
 
 func MatchAuthorRegex(expr string) object.CommitFilter {
 	re := regexp.MustCompile(expr)
-	return func(c *object.Commit) bool {
-		return re.MatchString(c.Author.Name)
+	return func(commit *object.Commit) bool {
+		return re.MatchString(commit.Author.Name)
 	}
 }
 
 func MatchEmailRegex(expr string) object.CommitFilter {
 	re := regexp.MustCompile(expr)
-	return func(c *object.Commit) bool {
-		return re.MatchString(c.Author.Email)
+	return func(commit *object.Commit) bool {
+		return re.MatchString(commit.Author.Email)
 	}
 }
 
 func MatchMessageRegex(expr string) object.CommitFilter {
 	re := regexp.MustCompile(expr)
-	return func(c *object.Commit) bool {
-		return re.MatchString(c.Message)
+	return func(commit *object.Commit) bool {
+		return re.MatchString(commit.Message)
 	}
 }
 
 func LimitN(n int) object.CommitFilter {
 	seen := 0
-	return func(c *object.Commit) bool {
+	return func(commit *object.Commit) bool {
 		if seen >= n {
 			return true
 		}
@@ -122,22 +122,22 @@ func LimitN(n int) object.CommitFilter {
 	}
 }
 
-func isBefore(before time.Time) object.CommitFilter {
-	return func(c *object.Commit) bool {
-		return c.Committer.When.Before(before)
+func beforeDate(t time.Time) object.CommitFilter {
+	return func(commit *object.Commit) bool {
+		return commit.Committer.When.Before(t)
 	}
 }
 
-func isAfter(after time.Time) object.CommitFilter {
-	return func(c *object.Commit) bool {
-		return !c.Committer.When.After(after)
+func afterDate(t time.Time) object.CommitFilter {
+	return func(commit *object.Commit) bool {
+		return !commit.Committer.When.After(t)
 	}
 }
 
 func MatchFileRegex(expr string) object.CommitFilter {
 	re := regexp.MustCompile(expr)
-	return func(c *object.Commit) bool {
-		stats, err := c.Stats()
+	return func(commit *object.Commit) bool {
+		stats, err := commit.Stats()
 		if err != nil {
 			return false
 		}

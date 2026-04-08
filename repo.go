@@ -13,11 +13,11 @@ type Repo struct {
 	repo *git.Repository
 }
 
-func New(repo *git.Repository) Repo {
+func NewRepo(repo *git.Repository) Repo {
 	return Repo{repo: repo}
 }
 
-func NewFromDir() (Repo, error) {
+func NewRepoFromDir() (Repo, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return Repo{}, err
@@ -26,7 +26,7 @@ func NewFromDir() (Repo, error) {
 	for dir != "/" {
 		repo, err = git.PlainOpen(dir)
 		if err == nil {
-			return New(repo), nil
+			return NewRepo(repo), nil
 		}
 		dir = filepath.Dir(dir)
 	}
@@ -42,25 +42,25 @@ func (r Repo) commitStats(isValid, isLimit *object.CommitFilter) (<-chan *Stats,
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan *Stats)
+	statsChan := make(chan *Stats)
 	iter := object.NewFilterCommitIter(head, isValid, isLimit)
 	go func() {
 		defer iter.Close()
-		defer close(ch)
-		if err := iter.ForEach(func(c *object.Commit) error {
-			stats, err := ToStats(c)
+		defer close(statsChan)
+		if err := iter.ForEach(func(commit *object.Commit) error {
+			stats, err := ToStats(commit)
 			if err != nil {
 				return err
 			}
 			for _, s := range stats {
-				ch <- s
+				statsChan <- s
 			}
 			return err
 		}); err != nil {
 			log.Fatal(err)
 		}
 	}()
-	return ch, nil
+	return statsChan, nil
 
 }
 

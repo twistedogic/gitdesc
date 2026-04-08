@@ -112,11 +112,11 @@ func Test_Repo(t *testing.T) {
 				},
 			},
 			want: []Stats{
-				{Name: "a", Type: authorType, Commit: 3, Addition: 5, Deletion: 2},
-				{Name: "b", Type: authorType, Commit: 1, Addition: 0, Deletion: 1},
-				{Name: "test", Type: fileType, Commit: 3, Addition: 3, Deletion: 2},
-				{Name: "dir/test", Type: fileType, Commit: 2, Addition: 1, Deletion: 1},
-				{Name: "dir/dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
+				{Name: "a", Type: AuthorType, Commit: 3, Addition: 5, Deletion: 2},
+				{Name: "b", Type: AuthorType, Commit: 1, Addition: 0, Deletion: 1},
+				{Name: "test", Type: FileType, Commit: 3, Addition: 3, Deletion: 2},
+				{Name: "dir/test", Type: FileType, Commit: 2, Addition: 1, Deletion: 1},
+				{Name: "dir/dir/test", Type: FileType, Commit: 1, Addition: 1, Deletion: 0},
 			},
 		},
 		"a only": {
@@ -148,12 +148,12 @@ func Test_Repo(t *testing.T) {
 					},
 				},
 			},
-			valid: compose(MatchAuthorRegex("a")),
+			valid: andFilters(MatchAuthorRegex("a")),
 			want: []Stats{
-				{Name: "a", Type: authorType, Commit: 3, Addition: 5, Deletion: 2},
-				{Name: "test", Type: fileType, Commit: 3, Addition: 3, Deletion: 2},
-				{Name: "dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
-				{Name: "dir/dir/test", Type: fileType, Commit: 1, Addition: 1, Deletion: 0},
+				{Name: "a", Type: AuthorType, Commit: 3, Addition: 5, Deletion: 2},
+				{Name: "test", Type: FileType, Commit: 3, Addition: 3, Deletion: 2},
+				{Name: "dir/test", Type: FileType, Commit: 1, Addition: 1, Deletion: 0},
+				{Name: "dir/dir/test", Type: FileType, Commit: 1, Addition: 1, Deletion: 0},
 			},
 		},
 		"limit 2 last commits only": {
@@ -185,12 +185,12 @@ func Test_Repo(t *testing.T) {
 					},
 				},
 			},
-			limit: compose(LimitN(2)),
+			limit: andFilters(LimitN(2)),
 			want: []Stats{
-				{Name: "a", Type: authorType, Commit: 2, Addition: 2, Deletion: 2},
-				{Name: "b", Type: authorType, Commit: 1, Addition: 0, Deletion: 1},
-				{Name: "test", Type: fileType, Commit: 2, Addition: 2, Deletion: 2},
-				{Name: "dir/test", Type: fileType, Commit: 1, Addition: 0, Deletion: 1},
+				{Name: "a", Type: AuthorType, Commit: 2, Addition: 2, Deletion: 2},
+				{Name: "b", Type: AuthorType, Commit: 1, Addition: 0, Deletion: 1},
+				{Name: "test", Type: FileType, Commit: 2, Addition: 2, Deletion: 2},
+				{Name: "dir/test", Type: FileType, Commit: 1, Addition: 0, Deletion: 1},
 			},
 		},
 	}
@@ -198,7 +198,7 @@ func Test_Repo(t *testing.T) {
 		tc := cases[name]
 		t.Run(name, func(t *testing.T) {
 			repo := setupRepo(t, tc.start, tc.commits)
-			r := New(repo)
+			r := NewRepo(repo)
 			_, err := r.Report(tc.valid, tc.limit)
 			require.NoError(t, err)
 		})

@@ -5,9 +5,9 @@ import (
 )
 
 const (
-	fileType   = "file"
-	authorType = "author"
-	emailType  = "email"
+	FileType  = "file"
+	AuthorType = "author"
+	EmailType  = "email"
 )
 
 func authorName(c *object.Commit) string {
@@ -24,9 +24,9 @@ func authorEmail(c *object.Commit) string {
 	return c.Author.Email
 }
 
-func fileStat(f object.FileStat) *Stats {
+func fileStats(f object.FileStat) *Stats {
 	return &Stats{
-		Name: f.Name, Type: fileType,
+		Name: f.Name, Type: FileType,
 		Commit: 1, Addition: f.Addition, Deletion: f.Deletion,
 	}
 }
@@ -40,22 +40,22 @@ func ToStats(commit *object.Commit) ([]*Stats, error) {
 		return nil, err
 	}
 	stats := make([]*Stats, 0, len(files)+2)
-	totalAdd, totalDel := 0, 0
+	totalAdditions, totalDeletions := 0, 0
 	for _, f := range files {
-		stats = append(stats, fileStat(f))
-		totalAdd += f.Addition
-		totalDel += f.Deletion
+		stats = append(stats, fileStats(f))
+		totalAdditions += f.Addition
+		totalDeletions += f.Deletion
 	}
 	if name := authorName(commit); name != "" {
 		stats = append(stats, &Stats{
-			Name: name, Type: authorType,
-			Commit: 1, Addition: totalAdd, Deletion: totalDel,
+			Name: name, Type: AuthorType,
+			Commit: 1, Addition: totalAdditions, Deletion: totalDeletions,
 		})
 	}
 	if email := authorEmail(commit); email != "" {
 		stats = append(stats, &Stats{
-			Name: email, Type: emailType,
-			Commit: 1, Addition: totalAdd, Deletion: totalDel,
+			Name: email, Type: EmailType,
+			Commit: 1, Addition: totalAdditions, Deletion: totalDeletions,
 		})
 	}
 	return stats, nil
